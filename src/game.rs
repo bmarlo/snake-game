@@ -250,6 +250,9 @@ impl SnakeGame {
         self.board.unmark(tail);
         self.player.update();
 
+        let target = *self.target.front().unwrap();
+        self.board.mark(target, TARGET_CHAR);
+
         let mut opponent_tail = None;
         match &mut self.opponent {
             Some(opponent) => {
@@ -291,9 +294,10 @@ impl SnakeGame {
                 }
 
                 self.board.mark(opponent.head(), OPPONENT_CHAR);
-                if opponent.head() == *self.target.front().unwrap() {
+                if opponent.head() == target {
                     let tail = opponent_tail.unwrap();
                     opponent.grow(tail);
+
                     self.board.mark(tail, OPPONENT_CHAR);
                     if self.board.is_full() {
                         if self.player.size() > opponent.size() {
@@ -312,7 +316,7 @@ impl SnakeGame {
             None => {}
         }
 
-        if !opponent_grow && self.player.head() == *self.target.front().unwrap() {
+        if !opponent_grow && self.player.head() == target {
             self.player.grow(tail);
             self.board.mark(tail, PLAYER_CHAR);
 
@@ -432,7 +436,6 @@ impl SnakeGame {
             Opcode::NewTarget => {
                 let data = packet.data();
                 let target = (data[0] as usize, data[1] as usize);
-                self.board.mark(target, TARGET_CHAR);
                 self.target.push_back(target);
             }
         }
@@ -485,7 +488,7 @@ impl SnakeGame {
                             panic!("disconnected [SnakeGame::recv_packet()]");
                         }
 
-                        if n != buffer.len() {
+                        if n != HEADER_SIZE {
                             panic!("read() error [SnakeGame::recv_packet()]");
                         }
 
