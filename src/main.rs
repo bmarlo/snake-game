@@ -21,8 +21,9 @@ use std::{
 
 const BOARD_SIZE: usize = 16;
 const PLAYER_CHAR: char = '+';
-const OPPONENT_CHAR: char = 'x';
+const OPPONENT_CHAR: char = '-';
 const TARGET_CHAR: char = 'o';
+const CRASH_CHAR: char = 'x';
 const GAME_PACE: Duration = Duration::from_millis(350);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -48,7 +49,8 @@ enum Direction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GameResult {
     Win,
-    Lose
+    Lose,
+    Draw
 }
 
 const PROTOCOL_ID: u64 = 0xaefdb87fe753ba07;
@@ -542,6 +544,9 @@ impl SnakeGame {
             },
             GameResult::Lose => {
                 println!("You lost :/");
+            },
+            GameResult::Draw => {
+                println!("It's a draw ._.");
             }
         }
 
@@ -579,12 +584,25 @@ impl SnakeGame {
                 opponent_tail = Some(tail);
                 self.board.unmark(tail);
                 opponent.update();
+
+                if self.player.head() == opponent.head() {
+                    self.board.mark(self.player.head(), CRASH_CHAR);
+                    return Some(GameResult::Draw);
+                }
             },
             None => {}
         }
 
         let pixel = self.board.value(self.player.head());
         if pixel == PLAYER_CHAR || pixel == OPPONENT_CHAR {
+            match &mut self.opponent {
+                Some(opponent) => {
+                    self.board.mark(opponent.head(), OPPONENT_CHAR);
+                },
+                None => {}
+            }
+
+            self.board.mark(self.player.head(), CRASH_CHAR);
             return Some(GameResult::Lose);
         }
 
@@ -595,6 +613,7 @@ impl SnakeGame {
             Some(opponent) => {
                 let pixel = self.board.value(opponent.head());
                 if pixel == OPPONENT_CHAR || pixel == PLAYER_CHAR {
+                    self.board.mark(opponent.head(), CRASH_CHAR);
                     return Some(GameResult::Win);
                 }
 
