@@ -46,11 +46,11 @@ enum Direction {
     Up
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum GameResult {
-    Win,
-    Lose,
-    Draw
+    Win(String),
+    Lose(String),
+    Draw(String)
 }
 
 const PROTOCOL_ID: u64 = 0xaefdb87fe753ba07;
@@ -116,7 +116,7 @@ impl Board {
     fn is_full(&self) -> bool {
         for row in &self.pixels {
             for pixel in row {
-                if *pixel == ' ' {
+                if *pixel == ' ' || *pixel == TARGET_CHAR {
                     return false;
                 }
             }
@@ -214,6 +214,10 @@ impl Snake {
 
     fn grow(&mut self, tail: (usize, usize)) {
         self.body.push(tail);
+    }
+
+    fn size(&self) -> usize {
+        self.body.len()
     }
 
     fn control(&mut self, direction: Direction) {
@@ -539,14 +543,14 @@ impl SnakeGame {
         }
 
         match result.unwrap() {
-            GameResult::Win => {
-                println!("You won :D");
+            GameResult::Win(msg) => {
+                println!("You won :D ({})", msg);
             },
-            GameResult::Lose => {
-                println!("You lost :/");
+            GameResult::Lose(msg) => {
+                println!("You lost :/ ({})", msg);
             },
-            GameResult::Draw => {
-                println!("It's a draw ._.");
+            GameResult::Draw(msg) => {
+                println!("It's a draw ._. ({})", msg);
             }
         }
 
@@ -587,7 +591,7 @@ impl SnakeGame {
 
                 if self.player.head() == opponent.head() {
                     self.board.mark(self.player.head(), CRASH_CHAR);
-                    return Some(GameResult::Draw);
+                    return Some(GameResult::Draw("heads crash".into()));
                 }
             },
             None => {}
@@ -603,7 +607,7 @@ impl SnakeGame {
             }
 
             self.board.mark(self.player.head(), CRASH_CHAR);
-            return Some(GameResult::Lose);
+            return Some(GameResult::Lose("player crash".into()));
         }
 
         let mut opponent_grow = false;
@@ -614,7 +618,7 @@ impl SnakeGame {
                 let pixel = self.board.value(opponent.head());
                 if pixel == OPPONENT_CHAR || pixel == PLAYER_CHAR {
                     self.board.mark(opponent.head(), CRASH_CHAR);
-                    return Some(GameResult::Win);
+                    return Some(GameResult::Win("opponent crash".into()));
                 }
 
                 self.board.mark(opponent.head(), OPPONENT_CHAR);
@@ -623,7 +627,13 @@ impl SnakeGame {
                     opponent.grow(tail);
                     self.board.mark(tail, OPPONENT_CHAR);
                     if self.board.is_full() {
-                        return Some(GameResult::Lose);
+                        if self.player.size() > opponent.size() {
+                            return Some(GameResult::Win("board full, player size wins".into()));
+                        } else if self.player.size() < opponent.size() {
+                            return Some(GameResult::Lose("board full, opponent size wins".into()));
+                        } else {
+                            return Some(GameResult::Draw("board full, same size".into()));
+                        }
                     }
 
                     self.target.pop_front();
@@ -639,7 +649,20 @@ impl SnakeGame {
 
             let target = self.board.random_position();
             if target.is_none() {
-                return Some(GameResult::Win);
+                match &mut self.opponent {
+                    Some(opponent) => {
+                        if self.player.size() > opponent.size() {
+                            return Some(GameResult::Win("board full, player size wins".into()));
+                        } else if self.player.size() < opponent.size() {
+                            return Some(GameResult::Lose("board full, opponent size wins".into()));
+                        } else {
+                            return Some(GameResult::Draw("board full, same size".into()));
+                        }
+                    },
+                    None => {
+                        return Some(GameResult::Win("board full".into()));
+                    }
+                }
             }
 
             let target = target.unwrap();
