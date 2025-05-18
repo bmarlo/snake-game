@@ -19,7 +19,7 @@ use std::{
     vec
 };
 
-const BOARD_SIZE: usize = 16;
+const BOARD_SIZE: usize = 8;
 const PLAYER_CHAR: char = '+';
 const OPPONENT_CHAR: char = '-';
 const TARGET_CHAR: char = 'o';
