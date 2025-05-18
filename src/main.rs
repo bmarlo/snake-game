@@ -61,6 +61,10 @@ enum Opcode {
     NewTarget
 }
 
+struct Board {
+    pixels: Vec<Vec<char>>
+}
+
 struct Packet {
     opcode: Opcode,
     data: Vec<u8>
@@ -72,13 +76,100 @@ struct Snake {
 }
 
 struct SnakeGame {
-    board: Vec<Vec<char>>,
+    board: Board,
     player: Snake,
     target: VecDeque<(usize, usize)>,
     socket: Option<TcpStream>,
     opponent: Option<Snake>,
     queue: VecDeque<Packet>,
     tick_id: u64
+}
+
+impl Board {
+    fn new() -> Self {
+        let mut pixels = Vec::new();
+        for _ in 0..BOARD_SIZE {
+            let mut row = Vec::new();
+            for _ in 0..BOARD_SIZE {
+                row.push(' ');
+            }
+            pixels.push(row);
+        }
+
+        Board { pixels }
+    }
+
+    fn mark(&mut self, pos: (usize, usize), value: char) {
+        self.pixels[pos.0][pos.1] = value;
+    }
+
+    fn unmark(&mut self, pos: (usize, usize)) {
+        self.pixels[pos.0][pos.1] = ' ';
+    }
+
+    fn value(&self, pos: (usize, usize)) -> char {
+        self.pixels[pos.0][pos.1]
+    }
+
+    fn is_full(&self) -> bool {
+        for row in &self.pixels {
+            for pixel in row {
+                if *pixel == ' ' {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn random_position(&self) -> (usize, usize) {
+        let mut available = Vec::new();
+        for i in 0..BOARD_SIZE {
+            for j in 0..BOARD_SIZE {
+                if self.pixels[i][j] == ' ' {
+                    available.push((i, j));
+                }
+            }
+        }
+
+        available[random_number() as usize % available.len()]
+    }
+
+    fn draw(&self) -> String {
+        let mut s = String::new();
+
+        s.push('+');
+        for _ in 0..BOARD_SIZE {
+            s.push(' ');
+            s.push('+');
+            s.push(' ');
+        }
+
+        s.push('+');
+        s.push('\n');
+        for row in &self.pixels {
+            s.push('+');
+            for pixel in row {
+                s.push(' ');
+                s.push(*pixel);
+                s.push(' ');
+            }
+            s.push('+');
+            s.push('\n');
+        }
+
+        s.push('+');
+        for _ in 0..BOARD_SIZE {
+            s.push(' ');
+            s.push('+');
+            s.push(' ');
+        }
+
+        s.push('+');
+        s.push('\n');
+        s
+    }
 }
 
 impl Direction {
@@ -277,11 +368,6 @@ fn random_number() -> u64 {
     *value
 }
 
-fn random_position() -> (usize, usize) {
-    let value = random_number() as usize;
-    (((value >> 8) & 0xff) % BOARD_SIZE, (value & 0xff) % BOARD_SIZE)
-}
-
 fn random_direction() -> Direction {
     match random_number() % 4 {
         0 => Direction::Right,
@@ -293,32 +379,24 @@ fn random_direction() -> Direction {
 
 impl SnakeGame {
     fn new(mode: GameMode) -> Self {
-        let mut board = Vec::new();
-        for _ in 0..BOARD_SIZE {
-            let mut row = Vec::new();
-            for _ in 0..BOARD_SIZE {
-                row.push(' ');
-            }
-            board.push(row);
-        }
+        let mut board = Board::new();
 
         let player;
-        let opponent;
+        let target;
         let socket;
-        let mut target;
+        let opponent;
 
         match mode {
             GameMode::Singleplayer => {
-                player = Snake::new(random_position(), random_direction());
-                opponent = None;
-                socket = None;
+                let head = board.random_position();
+                player = Snake::new(head, random_direction());
+                board.mark(head, PLAYER_CHAR);
 
-                loop {
-                    target = random_position();
-                    if board[target.0][target.1] == ' ' {
-                        break;
-                    }
-                }
+                target = board.random_position();
+                board.mark(target, TARGET_CHAR);
+
+                socket = None;
+                opponent = None;
             },
             GameMode::Multiplayer(mode) => {
                 match mode {
@@ -327,9 +405,16 @@ impl SnakeGame {
                             panic!("not a local/private IP address [SnakeGame::new()]");
                         }
 
-                        player = Snake::new((1, 1), Direction::Right);
-                        opponent = Some(Snake::new((BOARD_SIZE - 2, BOARD_SIZE - 2), Direction::Left));
+                        let head = (1, 1);
+                        player = Snake::new(head, Direction::Right);
+                        board.mark(head, PLAYER_CHAR);
+
+                        let head = (BOARD_SIZE - 2, BOARD_SIZE - 2);
+                        opponent = Some(Snake::new(head, Direction::Left));
+                        board.mark(head, OPPONENT_CHAR);
+
                         target = (BOARD_SIZE / 2, BOARD_SIZE / 2);
+                        board.mark(target, TARGET_CHAR);
 
                         println!("Connecting to {}", remote);
                         socket = match TcpStream::connect(&SocketAddr::V4(remote)) {
@@ -344,9 +429,16 @@ impl SnakeGame {
                             panic!("not a local/private IP address [SnakeGame::new()]");
                         }
 
-                        player = Snake::new((BOARD_SIZE - 2, BOARD_SIZE - 2), Direction::Left);
-                        opponent = Some(Snake::new((1, 1), Direction::Right));
+                        let head = (BOARD_SIZE - 2, BOARD_SIZE - 2);
+                        player = Snake::new(head, Direction::Left);
+                        board.mark(head, PLAYER_CHAR);
+
+                        let head = (1, 1);
+                        opponent = Some(Snake::new(head, Direction::Right));
+                        board.mark(head, OPPONENT_CHAR);
+
                         target = (BOARD_SIZE / 2, BOARD_SIZE / 2);
+                        board.mark(target, TARGET_CHAR);
 
                         let server = match TcpListener::bind(local) {
                             Ok(server) => server,
@@ -366,18 +458,6 @@ impl SnakeGame {
                     }
                 }
             }
-        }
-
-        let head = player.head();
-        board[head.0][head.1] = PLAYER_CHAR;
-        board[target.0][target.1] = TARGET_CHAR;
-
-        match &opponent {
-            Some(opponent) => {
-                let head = opponent.head();
-                board[head.0][head.1] = OPPONENT_CHAR;
-            },
-            None => {}
         }
 
         let mut deque = VecDeque::new();
@@ -449,7 +529,7 @@ impl SnakeGame {
             }
 
             result = self.update();
-            self.draw_board();
+            println!("\x1b[2J\x1b[1;1H{}", self.board.draw());
             sleep(GAME_PACE);
         }
 
@@ -486,7 +566,7 @@ impl SnakeGame {
 
     fn update(&mut self) -> Option<GameResult> {
         let tail = self.player.tail();
-        self.board[tail.0][tail.1] = ' ';
+        self.board.unmark(tail);
         self.player.update();
 
         let mut opponent_tail = None;
@@ -494,34 +574,34 @@ impl SnakeGame {
             Some(opponent) => {
                 let tail = opponent.tail();
                 opponent_tail = Some(tail);
-                self.board[tail.0][tail.1] = ' ';
+                self.board.unmark(tail);
                 opponent.update();
             },
             None => {}
         }
 
         let head = self.player.head();
-        let pixel = self.board[head.0][head.1];
+        let pixel = self.board.value(head);
         if pixel == PLAYER_CHAR || pixel == OPPONENT_CHAR {
             return Some(GameResult::Lose);
         }
 
         let mut opponent_grow = false;
-        self.board[head.0][head.1] = PLAYER_CHAR;
+        self.board.mark(head, PLAYER_CHAR);
 
         match &mut self.opponent {
             Some(opponent) => {
                 let head = opponent.head();
-                let pixel = self.board[head.0][head.1];
+                let pixel = self.board.value(head);
                 if pixel == OPPONENT_CHAR || pixel == PLAYER_CHAR {
                     return Some(GameResult::Win);
                 }
 
-                self.board[head.0][head.1] = OPPONENT_CHAR;
+                self.board.mark(head, OPPONENT_CHAR);
                 if head == *self.target.front().unwrap() {
                     let tail = opponent_tail.unwrap();
                     opponent.grow(tail);
-                    self.board[tail.0][tail.1] = OPPONENT_CHAR;
+                    self.board.mark(tail, OPPONENT_CHAR);
                     self.target.pop_front();
                     opponent_grow = true;
                 }
@@ -531,32 +611,22 @@ impl SnakeGame {
 
         if !opponent_grow && head == *self.target.front().unwrap() {
             self.player.grow(tail);
-            self.board[tail.0][tail.1] = PLAYER_CHAR;
+            self.board.mark(tail, PLAYER_CHAR);
 
-            loop {
-                let target = random_position();
-                if self.board[target.0][target.1] == ' ' {
-                    self.board[target.0][target.1] = TARGET_CHAR;
-                    if self.is_multiplayer() {
-                        self.send_target(target);
-                    }
-
-                    self.target.push_back(target);
-                    self.target.pop_front();
-                    break;
-                }
+            let target = self.board.random_position();
+            self.board.mark(target, TARGET_CHAR);
+            if self.is_multiplayer() {
+                self.send_target(target);
             }
+
+            self.target.push_back(target);
+            self.target.pop_front();
         }
 
-        for row in &self.board {
-            for pixel in row {
-                if *pixel == ' ' {
-                    return None;
-                }
-            }
+        match self.board.is_full() {
+            true => Some(GameResult::Win),
+            false => None
         }
-
-        Some(GameResult::Win)
     }
 
     fn synchronize(&mut self) {
@@ -644,7 +714,7 @@ impl SnakeGame {
             Opcode::NewTarget => {
                 let data = packet.data();
                 let target = (data[0] as usize, data[1] as usize);
-                self.board[target.0][target.1] = TARGET_CHAR;
+                self.board.mark(target, TARGET_CHAR);
                 self.target.push_back(target);
             }
         }
@@ -741,43 +811,6 @@ impl SnakeGame {
                 panic!("unreachable [SnakeGame::recv_packet()]");
             }
         }
-    }
-
-    fn draw_board(&self) {
-        let mut s = String::new();
-        s.push_str("\x1b[2J");
-        s.push_str("\x1b[1;1H");
-
-        s.push('+');
-        for _ in 0..BOARD_SIZE {
-            s.push(' ');
-            s.push('+');
-            s.push(' ');
-        }
-
-        s.push('+');
-        s.push('\n');
-        for row in &self.board {
-            s.push('+');
-            for pixel in row {
-                s.push(' ');
-                s.push(*pixel);
-                s.push(' ');
-            }
-            s.push('+');
-            s.push('\n');
-        }
-
-        s.push('+');
-        for _ in 0..BOARD_SIZE {
-            s.push(' ');
-            s.push('+');
-            s.push(' ');
-        }
-
-        s.push('+');
-        s.push('\n');
-        println!("{}", s);
     }
 }
 
