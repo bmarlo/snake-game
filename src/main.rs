@@ -583,25 +583,23 @@ impl SnakeGame {
             None => {}
         }
 
-        let head = self.player.head();
-        let pixel = self.board.value(head);
+        let pixel = self.board.value(self.player.head());
         if pixel == PLAYER_CHAR || pixel == OPPONENT_CHAR {
             return Some(GameResult::Lose);
         }
 
         let mut opponent_grow = false;
-        self.board.mark(head, PLAYER_CHAR);
+        self.board.mark(self.player.head(), PLAYER_CHAR);
 
         match &mut self.opponent {
             Some(opponent) => {
-                let head = opponent.head();
-                let pixel = self.board.value(head);
+                let pixel = self.board.value(opponent.head());
                 if pixel == OPPONENT_CHAR || pixel == PLAYER_CHAR {
                     return Some(GameResult::Win);
                 }
 
-                self.board.mark(head, OPPONENT_CHAR);
-                if head == *self.target.front().unwrap() {
+                self.board.mark(opponent.head(), OPPONENT_CHAR);
+                if opponent.head() == *self.target.front().unwrap() {
                     let tail = opponent_tail.unwrap();
                     opponent.grow(tail);
                     self.board.mark(tail, OPPONENT_CHAR);
@@ -616,7 +614,7 @@ impl SnakeGame {
             None => {}
         }
 
-        if !opponent_grow && head == *self.target.front().unwrap() {
+        if !opponent_grow && self.player.head() == *self.target.front().unwrap() {
             self.player.grow(tail);
             self.board.mark(tail, PLAYER_CHAR);
 
