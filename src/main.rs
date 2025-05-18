@@ -123,7 +123,7 @@ impl Board {
         true
     }
 
-    fn random_position(&self) -> (usize, usize) {
+    fn random_position(&self) -> Option<(usize, usize)> {
         let mut available = Vec::new();
         for i in 0..BOARD_SIZE {
             for j in 0..BOARD_SIZE {
@@ -133,7 +133,10 @@ impl Board {
             }
         }
 
-        available[random_number() as usize % available.len()]
+        match available.is_empty() {
+            false => Some(available[random_number() as usize % available.len()]),
+            true => None
+        }
     }
 
     fn draw(&self) -> String {
@@ -246,8 +249,8 @@ impl Snake {
                 self.body[i] = match self.direction {
                     Direction::Right => (head.0, (head.1 + 1) % BOARD_SIZE),
                     Direction::Down => ((head.0 + 1) % BOARD_SIZE, head.1),
-                    Direction::Left => (head.0, (head.1 - 1) % BOARD_SIZE),
-                    Direction::Up => ((head.0 - 1) % BOARD_SIZE, head.1)
+                    Direction::Left => (head.0, if head.1 > 0 { head.1 - 1 } else { BOARD_SIZE - 1 }),
+                    Direction::Up => (if head.0 > 0 { head.0 - 1 } else { BOARD_SIZE - 1 }, head.1)
                 };
             }
         }
@@ -388,11 +391,11 @@ impl SnakeGame {
 
         match mode {
             GameMode::Singleplayer => {
-                let head = board.random_position();
+                let head = board.random_position().unwrap();
                 player = Snake::new(head, random_direction());
                 board.mark(head, PLAYER_CHAR);
 
-                target = board.random_position();
+                target = board.random_position().unwrap();
                 board.mark(target, TARGET_CHAR);
 
                 socket = None;
@@ -602,6 +605,10 @@ impl SnakeGame {
                     let tail = opponent_tail.unwrap();
                     opponent.grow(tail);
                     self.board.mark(tail, OPPONENT_CHAR);
+                    if self.board.is_full() {
+                        return Some(GameResult::Lose);
+                    }
+
                     self.target.pop_front();
                     opponent_grow = true;
                 }
@@ -614,6 +621,11 @@ impl SnakeGame {
             self.board.mark(tail, PLAYER_CHAR);
 
             let target = self.board.random_position();
+            if target.is_none() {
+                return Some(GameResult::Win);
+            }
+
+            let target = target.unwrap();
             self.board.mark(target, TARGET_CHAR);
             if self.is_multiplayer() {
                 self.send_target(target);
@@ -623,10 +635,7 @@ impl SnakeGame {
             self.target.pop_front();
         }
 
-        match self.board.is_full() {
-            true => Some(GameResult::Win),
-            false => None
-        }
+        None
     }
 
     fn synchronize(&mut self) {
