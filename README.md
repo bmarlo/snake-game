@@ -4,11 +4,11 @@ Multiplayer, terminal-based snake game in std Rust 🦀
 
 Player is controlled by `WASD` + `Enter` (no raw mode).
 
-## Singleplayer
+### Singleplayer
 
 `cargo run --release`
 
-## Multiplayer
+### Multiplayer
 
 Server instance: `cargo run --release -- --accept <ip-addr>:<port>`
 
